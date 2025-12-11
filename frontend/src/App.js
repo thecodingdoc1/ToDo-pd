@@ -7,6 +7,7 @@ const API_URL = 'http://localhost:5000/api/tasks';
 function App() {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
 
   useEffect(() => {
     fetchTasks();
@@ -25,8 +26,9 @@ function App() {
     e.preventDefault();
     if (!newTask.trim()) return;
     try {
-      await axios.post(API_URL, { description: newTask });
+      await axios.post(API_URL, { description: newTask , duedate: newTaskDueDate });
       setNewTask('');
+      setNewTaskDueDate('');
       fetchTasks();
     } catch (error) {
       console.error("Error adding task:", error);
@@ -36,6 +38,11 @@ function App() {
   const toggleComplete = async (id, completed) => {
     try {
       await axios.put(`${API_URL}/${id}`, { completed: !completed });
+      setTasks(prevTasks => 
+            prevTasks.map(task =>
+                task.id === id ? { ...task, completed: !completed } : task
+            )
+        );
       fetchTasks();
     } catch (error) {
       console.error("Error updating task:", error);
@@ -61,13 +68,31 @@ function App() {
           onChange={(e) => setNewTask(e.target.value)}
           placeholder="Add a new task"
         />
+        <input
+          type="date"
+          value={newTaskDueDate}
+          onChange={(e) => setNewTaskDueDate(e.target.value)}
+          placeholder="Due Date"
+        />
         <button type="submit">Add Task</button>
       </form>
       <ul>
-        {tasks.map(task => (
+        Tasks
+        {tasks.filter(task => !task.completed).map(task => (
           <li key={task.id} className={task.completed ? 'completed' : ''}>
             <span onClick={() => toggleComplete(task.id, task.completed)}>
-              {task.description}
+              {task.description} - {task.duedate}
+            </span>
+            <button onClick={() => deleteTask(task.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+      <ul>
+        Completed
+        {tasks.filter(task => task.completed).map(task => (
+          <li key={task.id}>
+            <span style={{ textDecoration: 'line-through'}} onClick={() => toggleComplete(task.id, task.completed)}>
+              {task.description} - {task.duedate}
             </span>
             <button onClick={() => deleteTask(task.id)}>Delete</button>
           </li>

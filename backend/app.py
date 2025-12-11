@@ -29,7 +29,7 @@ def get_db_connection():
 def get_tasks():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, description, completed FROM tasks;')
+    cursor.execute('SELECT id, description, duedate, completed FROM tasks;')
     tasks = cursor.fetchall()
     conn.close()
 
@@ -38,7 +38,8 @@ def get_tasks():
         tasks_list.append({
             'id': task[0],
             'description':task[1],
-            'completed':task[2]
+            'duedate': task[2],
+            'completed':task[3]
         })
     return jsonify(tasks_list)
 
@@ -46,25 +47,68 @@ def get_tasks():
 def add_tasks():
     data = request.json
     description = data.get('description')
+    duedate = data.get('duedate')
+
+    conn = None
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO tasks (description) VALUES (%s) RETURNING id;', (description,))
+        
+    # This is the line that might be failing:
+    cursor.execute(
+        'INSERT INTO tasks (description, duedate, completed) VALUES (%s, %s, %s) RETURNING id;', 
+        (description, duedate, False) # Explicitly passing 'False' for completed
+    )
+        
     new_task_id = cursor.fetchone()[0]
     conn.commit()
-    conn.close()
-
-    return jsonify({'id': new_task_id, 'description': description, 'completed': False}), 201
+        
+    return jsonify({'id': new_task_id, 'description': description, 'duedate': duedate, 'completed': False}), 201
 
 @app.route('/api/tasks/<int:task_id>', methods=['PUT', 'DELETE'])
 def delete_task(task_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM tasks WHERE id = %s;', (task_id,))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-    return jsonify({'message': 'Task deleted'}), 200
+        if request.method == 'PUT':
+            data = request.json
+            completed = data.get('completed') 
+            
+            # --- CRITICAL UPDATE LOGIC ---
+            cursor.execute(
+                # Ensure 'completed' is the correct column name in your DB
+                'UPDATE tasks SET completed = %s WHERE id = %s;', 
+                (completed, task_id)
+            )
+            conn.commit()
+            
+            if cursor.rowcount == 0:
+                # Task ID might be wrong or not found
+                return jsonify({'message': 'Task not found'}), 404
+            
+            return jsonify({'message': 'Task updated'}), 200
+        
+        cursor.execute('DELETE FROM tasks WHERE id = %s;', (task_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'message': 'Task not found'}), 404
+        return jsonify({'message': 'Task updated'}), 200
+
+        # ... (rest of the DELETE logic)
+
+    except Exception as e:
+        print(f"Error in handle_task: {e}")
+        if conn:
+            conn.rollback()
+        return jsonify({'error': 'Server error during update/delete'}), 500  
+     
+    finally:
+        conn.close()
+
+    return jsonify({'message': 'Task deleted'}), 200 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
